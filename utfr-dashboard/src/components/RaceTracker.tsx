@@ -211,17 +211,31 @@ export default function RaceTracker() {
               <SelectValue placeholder="Select stint" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="current">Current Stint</SelectItem>
+              <SelectItem value="current">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  Current Stint
+                </div>
+              </SelectItem>
               {stints.map(stint => (
                 <SelectItem key={stint.id} value={stint.id}>
-                  {stint.name} - {stint.driver}
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    {stint.name} - {stint.driver}
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          {selectedStintId !== "current" && (
-            <div className="text-sm text-gray-400">
-              Editing laps from previous stint
+          {selectedStintId !== "current" ? (
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className="text-blue-300">Editing completed stint</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-green-300">Live tracking</span>
             </div>
           )}
         </div>
@@ -236,6 +250,18 @@ export default function RaceTracker() {
         </div>
 
         <div className="overflow-x-auto border border-gray-800 rounded-lg bg-gray-950">
+          <div className="bg-gray-900 px-4 py-2 border-b border-gray-800">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium text-white">
+                {selectedStintId === "current" ? "Current Stint Laps" : "Completed Stint Laps"}
+              </h3>
+              {selectedStintId !== "current" && (
+                <div className="text-xs text-blue-300 bg-blue-900/30 px-2 py-1 rounded">
+                  All fields editable
+                </div>
+              )}
+            </div>
+          </div>
           <table className="min-w-full text-sm font-mono text-white">
             <thead className="bg-gray-900">
               <tr className="text-left border-b border-gray-800">
@@ -263,7 +289,21 @@ export default function RaceTracker() {
                 return (
                   <tr key={l.lapNumber} className="border-b border-gray-800">
                     <td className="py-2 px-3">{l.lapNumber}</td>
-                    <td className="py-2 px-3">{formatLapTime(l.timeSec)}</td>
+                    <td className="py-2 px-3">
+                      {selectedStintId === "current" ? (
+                        formatLapTime(l.timeSec)
+                      ) : (
+                        <Input 
+                          value={l.timeSec ? l.timeSec.toString() : ""} 
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            updateLap(l.lapNumber, { timeSec: Number.isFinite(val) ? val : undefined });
+                          }} 
+                          placeholder="Time (sec)"
+                          className="w-24 text-white bg-gray-800 border-gray-700" 
+                        />
+                      )}
+                    </td>
                     <td className="py-2 px-3">
                       <Input value={l.cones ?? ""} onChange={(e)=>updateLap(l.lapNumber, { cones: parseInt(e.target.value || "0") })} className="w-24 text-white bg-gray-800 border-gray-700" />
                     </td>
@@ -301,15 +341,24 @@ export default function RaceTracker() {
         {/* Stints Summary */}
         {stints.length > 0 && (
           <div className="space-y-3">
+            <div className="text-sm text-gray-400 bg-gray-800 p-3 rounded border border-gray-700">
+              <strong>💡 Tip:</strong> You can switch to any completed stint above to edit lap times, SOC values, cones, and notes. 
+              Changes are saved automatically and will update the stint totals.
+            </div>
             {stints.map((s, i) => {
               const [actual, setActual] = [s.kwhActual, (v:number)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,kwhActual:v}:x))];
               const [swap, setSwap] = [s.driverSwapSec, (v:number)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,driverSwapSec:v}:x))];
               const over = s.kwhActual !== undefined && s.totals.kwhUsedEst !== undefined ? s.kwhActual > s.totals.kwhUsedEst : false;
               const bg = s.kwhActual === undefined ? "bg-gray-900" : (over ? "bg-red-900/40" : "bg-green-900/30");
+              const isSelected = selectedStintId === s.id;
               return (
-                <div key={s.id} className={`p-3 rounded border border-gray-800 ${bg}`}>
+                <div key={s.id} className={`p-3 rounded border ${isSelected ? 'border-blue-500 bg-blue-900/20' : 'border-gray-800'} ${bg}`}>
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="font-mono">{s.name} • {s.driver} @ {s.track}</div>
+                    <div className="font-mono flex items-center gap-2">
+                      {isSelected && <div className="w-2 h-2 bg-blue-500 rounded-full"></div>}
+                      {s.name} • {s.driver} @ {s.track}
+                      {isSelected && <span className="text-xs text-blue-300 bg-blue-800/50 px-2 py-1 rounded">Currently Viewing</span>}
+                    </div>
                     <div className="text-sm opacity-80">Laps: {s.totals.numLaps}, Cones: {s.totals.totalCones}, Avg: {formatLapTime(s.totals.avgLap)}, Best: {formatLapTime(s.totals.bestLap)}</div>
                     <div className="ml-auto flex gap-3 items-center">
                       <div className="flex items-center gap-2">
