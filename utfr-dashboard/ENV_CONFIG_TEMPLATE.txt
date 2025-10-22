@@ -1,0 +1,27 @@
+# Google Drive API Configuration Template
+# Create a file named .env.local in your project root with the following content:
+
+NEXT_PUBLIC_GOOGLE_API_KEY=your_google_api_key_here
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
+
+# Instructions:
+# 1. Copy the above content
+# 2. Create a new file called .env.local in your project root
+# 3. Paste the content into .env.local
+# 4. Replace the placeholder values with your actual Google Cloud credentials
+# 5. Save the file
+
+# How to get your credentials:
+# 1. Go to https://console.cloud.google.com/
+# 2. Create a new project or select existing one
+# 3. Enable Google Drive API
+# 4. Go to APIs & Services > Credentials
+# 5. Create OAuth 2.0 Client ID
+# 6. Create API Key
+# 7. Copy the values to your .env.local file
+
+# Security Note:
+# Never commit .env.local to version control
+# Add .env.local to your .gitignore file

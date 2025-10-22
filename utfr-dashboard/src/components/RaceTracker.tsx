@@ -1,0 +1,336 @@
+import React, { useMemo, useRef, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+type Lap = {
+  lapNumber: number;
+  timeSec?: number; // lap time in seconds
+  cones?: number;
+  socStartPct?: number;
+  socEndPct?: number;
+  targetWh?: number; // per-lap energy target (Wh)
+  notes?: string;
+};
+
+function formatLapTime(sec?: number) {
+  if (sec === undefined || Number.isNaN(sec)) return "—";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toFixed(2).padStart(5, "0")}`; // m:ss.ff
+}
+
+export default function RaceTracker() {
+  const [driver, setDriver] = useState("");
+  const [track, setTrack] = useState("");
+  const [ambientTempC, setAmbientTempC] = useState<string>("");
+  const [stintName, setStintName] = useState("Stint 1");
+  const [targetSocPct, setTargetSocPct] = useState<string>("");
+  const [initialSocPct, setInitialSocPct] = useState<string>("");
+  const [kwhPack, setKwhPack] = useState<string>("");
+  const [lapTargetWh, setLapTargetWh] = useState<string>("");
+
+  const [laps, setLaps] = useState<Lap[]>([]);
+  const [nextLapNum, setNextLapNum] = useState(1);
+  type Stint = {
+    id: string;
+    driver: string;
+    track: string;
+    name: string;
+    driverSwapSec?: number;
+    kwhActual?: number; // manually entered
+    laps: Lap[]; // preserve laps from this stint
+    totals: { numLaps: number; totalCones: number; avgLap?: number; bestLap?: number; kwhUsedEst?: number };
+  };
+  const [stints, setStints] = useState<Stint[]>([]);
+  const [selectedStintId, setSelectedStintId] = useState<string>("current");
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [running, setRunning] = useState(false);
+  const [lapStartTs, setLapStartTs] = useState<number | null>(null);
+  const [liveLapSec, setLiveLapSec] = useState<number>(0);
+
+  const startLap = () => {
+    if (running) return;
+    setLapStartTs(performance.now());
+    setRunning(true);
+    if (timerRef.current) clearInterval(timerRef.current as any);
+    timerRef.current = setInterval(() => {
+      setLiveLapSec(prev => {
+        if (!running && lapStartTs == null) return 0;
+        const now = performance.now();
+        const base = lapStartTs ?? now;
+        return (now - base) / 1000;
+      });
+      return undefined as any;
+    }, 50) as any;
+  };
+
+  const endLap = () => {
+    if (!running || lapStartTs == null) return;
+    const elapsedMs = performance.now() - lapStartTs;
+    const timeSec = elapsedMs / 1000;
+    setLaps(prev => [...prev, { lapNumber: nextLapNum, timeSec }]);
+    setNextLapNum(n => n + 1);
+    setRunning(false);
+    setLapStartTs(null);
+    setLiveLapSec(0);
+    if (timerRef.current) { clearInterval(timerRef.current as any); timerRef.current = null; }
+  };
+
+  const markLap = () => {
+    if (!running || lapStartTs == null) return;
+    const elapsedMs = performance.now() - lapStartTs;
+    const timeSec = elapsedMs / 1000;
+    setLaps(prev => [...prev, { lapNumber: nextLapNum, timeSec }]);
+    setNextLapNum(n => n + 1);
+    // immediately start next lap
+    setLapStartTs(performance.now());
+    setLiveLapSec(0);
+  };
+
+  const addManualLap = (timeStr: string) => {
+    const t = parseFloat(timeStr);
+    if (!Number.isFinite(t)) return;
+    setLaps(prev => [...prev, { lapNumber: nextLapNum, timeSec: t }]);
+    setNextLapNum(n => n + 1);
+  };
+
+  const updateLap = (lapNumber: number, patch: Partial<Lap>) => {
+    if (selectedStintId === "current") {
+      setLaps(prev => prev.map(l => (l.lapNumber === lapNumber ? { ...l, ...patch } : l)));
+    } else {
+      // Update lap in a previous stint
+      setStints(prev => prev.map(stint => 
+        stint.id === selectedStintId 
+          ? { ...stint, laps: stint.laps.map(l => (l.lapNumber === lapNumber ? { ...l, ...patch } : l)) }
+          : stint
+      ));
+    }
+  };
+
+  // Get the laps to display (either current laps or laps from selected stint)
+  const displayLaps = useMemo(() => {
+    if (selectedStintId === "current") {
+      return laps;
+    } else {
+      const selectedStint = stints.find(s => s.id === selectedStintId);
+      return selectedStint?.laps || [];
+    }
+  }, [selectedStintId, laps, stints]);
+
+  const totals = useMemo(() => {
+    const totalCones = displayLaps.reduce((acc, l) => acc + (l.cones ?? 0), 0);
+    const numLaps = displayLaps.length;
+    const validTimes = displayLaps.map(l => l.timeSec).filter((x): x is number => typeof x === "number");
+    const avgLap = validTimes.length ? validTimes.reduce((a, b) => a + b, 0) / validTimes.length : undefined;
+    const bestLap = validTimes.length ? Math.min(...validTimes) : undefined;
+
+    // Simple SOC/kWh model: if initial SOC and pack kWh known, estimate used kWh
+    const initSoc = parseFloat(initialSocPct || "");
+    const finalSoc = displayLaps.at(-1)?.socEndPct;
+    const pack = parseFloat(kwhPack || "");
+    const kwhUsed = Number.isFinite(initSoc) && Number.isFinite(pack) && Number.isFinite(finalSoc ?? NaN)
+      ? (Math.max(0, initSoc - (finalSoc as number)) / 100) * pack
+      : undefined;
+
+    return { totalCones, numLaps, avgLap, bestLap, kwhUsed };
+  }, [displayLaps, initialSocPct, kwhPack]);
+
+  const endStintAndAppend = () => {
+    // close running lap if any
+    if (running) {
+      markLap();
+      setRunning(false);
+      setLapStartTs(null);
+      if (timerRef.current) { clearInterval(timerRef.current as any); timerRef.current = null; }
+    }
+    const est = totals.kwhUsed;
+    const stint: Stint = {
+      id: `${stintName}-${Date.now()}`,
+      driver,
+      track,
+      name: stintName,
+      laps: [...laps], // preserve the laps from this stint
+      totals: { numLaps: totals.numLaps, totalCones: totals.totalCones, avgLap: totals.avgLap, bestLap: totals.bestLap, kwhUsedEst: est },
+    };
+    setStints(prev => [...prev, stint]);
+    // reset for next stint
+    setLaps([]); setNextLapNum(1); setStintName(`Stint ${stints.length + 2}`);
+  };
+
+  return (
+    <Card className="bg-gray-900 border border-gray-800 shadow-lg">
+      <CardHeader className="border-b border-gray-800">
+        <CardTitle className="text-xl font-light text-white tracking-wide">Race Tracker</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-white">
+        <div className="grid md:grid-cols-3 gap-3">
+          <div>
+            <Label>Stint</Label>
+            <Input value={stintName} onChange={(e)=>setStintName(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Driver</Label>
+            <Input value={driver} onChange={(e)=>setDriver(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Track</Label>
+            <Input value={track} onChange={(e)=>setTrack(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Ambient °C</Label>
+            <Input value={ambientTempC} onChange={(e)=>setAmbientTempC(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Target SOC % (lap)</Label>
+            <Input value={targetSocPct} onChange={(e)=>setTargetSocPct(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Initial SOC %</Label>
+            <Input value={initialSocPct} onChange={(e)=>setInitialSocPct(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Pack Energy (kWh)</Label>
+            <Input value={kwhPack} onChange={(e)=>setKwhPack(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+          <div>
+            <Label>Lap Target (Wh)</Label>
+            <Input value={lapTargetWh} onChange={(e)=>setLapTargetWh(e.target.value)} className="text-white bg-gray-800 border-gray-700" />
+          </div>
+        </div>
+
+        {/* Stint Selector */}
+        <div className="flex items-center gap-3">
+          <Label className="text-white">View Stint:</Label>
+          <Select value={selectedStintId} onValueChange={setSelectedStintId}>
+            <SelectTrigger className="w-[200px] text-white bg-gray-800 border-gray-700">
+              <SelectValue placeholder="Select stint" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current">Current Stint</SelectItem>
+              {stints.map(stint => (
+                <SelectItem key={stint.id} value={stint.id}>
+                  {stint.name} - {stint.driver}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedStintId !== "current" && (
+            <div className="text-sm text-gray-400">
+              Editing laps from previous stint
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2 items-center">
+          <Button onClick={startLap} disabled={running || selectedStintId !== "current"}>Start Lap</Button>
+          <Button onClick={markLap} disabled={!running || selectedStintId !== "current"}>Mark Lap</Button>
+          <Button onClick={endStintAndAppend} disabled={selectedStintId !== "current"}>{running ? 'End Stint' : 'Save Stint'}</Button>
+          {selectedStintId === "current" && (
+            <div className="ml-4 text-sm opacity-80">Live: <b>{formatLapTime(liveLapSec)}</b></div>
+          )}
+        </div>
+
+        <div className="overflow-x-auto border border-gray-800 rounded-lg bg-gray-950">
+          <table className="min-w-full text-sm font-mono text-white">
+            <thead className="bg-gray-900">
+              <tr className="text-left border-b border-gray-800">
+                <th className="py-2 px-3">Lap</th>
+                <th className="py-2 px-3">Time</th>
+                <th className="py-2 px-3">Cones</th>
+                <th className="py-2 px-3">SOC Start %</th>
+                <th className="py-2 px-3">SOC End %</th>
+                <th className="py-2 px-3">Target (Wh)</th>
+                <th className="py-2 px-3">Consumption (Wh)</th>
+                <th className="py-2 px-3">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayLaps.map(l => {
+                const pack = parseFloat(kwhPack || "");
+                const start = l.socStartPct;
+                const end = l.socEndPct;
+                const consWh = Number.isFinite(pack) && start !== undefined && end !== undefined
+                  ? Math.max(0, (start - end)) / 100 * pack * 1000
+                  : undefined;
+                const targetWh = l.targetWh ?? (parseFloat(lapTargetWh || "") || undefined);
+                const over = targetWh !== undefined && consWh !== undefined ? consWh > targetWh : false;
+                const bg = consWh === undefined || targetWh === undefined ? "" : (over ? "bg-red-900/40" : "bg-green-900/30");
+                return (
+                  <tr key={l.lapNumber} className="border-b border-gray-800">
+                    <td className="py-2 px-3">{l.lapNumber}</td>
+                    <td className="py-2 px-3">{formatLapTime(l.timeSec)}</td>
+                    <td className="py-2 px-3">
+                      <Input value={l.cones ?? ""} onChange={(e)=>updateLap(l.lapNumber, { cones: parseInt(e.target.value || "0") })} className="w-24 text-white bg-gray-800 border-gray-700" />
+                    </td>
+                    <td className="py-2 px-3">
+                      <Input value={l.socStartPct ?? ""} onChange={(e)=>updateLap(l.lapNumber, { socStartPct: parseFloat(e.target.value || "") })} className="w-28 text-white bg-gray-800 border-gray-700" />
+                    </td>
+                    <td className="py-2 px-3">
+                      <Input value={l.socEndPct ?? ""} onChange={(e)=>updateLap(l.lapNumber, { socEndPct: parseFloat(e.target.value || "") })} className="w-28 text-white bg-gray-800 border-gray-700" />
+                    </td>
+                    <td className="py-2 px-3">
+                      <Input value={l.targetWh ?? (lapTargetWh || "")} onChange={(e)=>{
+                        const v = e.target.value; const n = v === "" ? undefined : parseFloat(v);
+                        updateLap(l.lapNumber, { targetWh: Number.isFinite(n as number) ? (n as number) : undefined });
+                      }} className="w-28 text-white bg-gray-800 border-gray-700" />
+                    </td>
+                    <td className={`py-2 px-3 ${bg}`}>{consWh?.toFixed(0) ?? "—"}</td>
+                    <td className="py-2 px-3">
+                      <Input value={l.notes ?? ""} onChange={(e)=>updateLap(l.lapNumber, { notes: e.target.value })} className="text-white bg-gray-800 border-gray-700" />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="grid md:grid-cols-4 gap-3 text-white">
+          <div className="p-3 bg-gray-800 rounded">Laps: <b>{totals.numLaps}</b></div>
+          <div className="p-3 bg-gray-800 rounded">Cones: <b>{totals.totalCones}</b></div>
+          <div className="p-3 bg-gray-800 rounded">Avg: <b>{formatLapTime(totals.avgLap)}</b></div>
+          <div className="p-3 bg-gray-800 rounded">Best: <b>{formatLapTime(totals.bestLap)}</b></div>
+          <div className="p-3 bg-gray-800 rounded md:col-span-2">kWh Used (est): <b>{totals.kwhUsed?.toFixed(2) ?? "—"}</b></div>
+        </div>
+
+        {/* Stints Summary */}
+        {stints.length > 0 && (
+          <div className="space-y-3">
+            {stints.map((s, i) => {
+              const [actual, setActual] = [s.kwhActual, (v:number)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,kwhActual:v}:x))];
+              const [swap, setSwap] = [s.driverSwapSec, (v:number)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,driverSwapSec:v}:x))];
+              const over = s.kwhActual !== undefined && s.totals.kwhUsedEst !== undefined ? s.kwhActual > s.totals.kwhUsedEst : false;
+              const bg = s.kwhActual === undefined ? "bg-gray-900" : (over ? "bg-red-900/40" : "bg-green-900/30");
+              return (
+                <div key={s.id} className={`p-3 rounded border border-gray-800 ${bg}`}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="font-mono">{s.name} • {s.driver} @ {s.track}</div>
+                    <div className="text-sm opacity-80">Laps: {s.totals.numLaps}, Cones: {s.totals.totalCones}, Avg: {formatLapTime(s.totals.avgLap)}, Best: {formatLapTime(s.totals.bestLap)}</div>
+                    <div className="ml-auto flex gap-3 items-center">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs">Driver Swap (s)</Label>
+                        <Input value={swap ?? ""} onChange={(e)=>setSwap(parseFloat(e.target.value||""))} className="w-28 text-white bg-gray-800 border-gray-700" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs">Actual kWh</Label>
+                        <Input value={actual ?? ""} onChange={(e)=>setActual(parseFloat(e.target.value||""))} className="w-28 text-white bg-gray-800 border-gray-700" />
+                      </div>
+                      <div className="text-sm">Est: {s.totals.kwhUsedEst?.toFixed(2) ?? "—"}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+
