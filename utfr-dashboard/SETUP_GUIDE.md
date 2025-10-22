@@ -49,8 +49,8 @@ brew install node
 2. Navigate to your desired directory
 3. Clone the repository:
    ```bash
-   git clone <repository-url>
-   cd utfr-dashboard
+   git clone https://github.com/aheggerud/UTFR-Dashboard.git
+   cd UTFR-Dashboard/utfr-dashboard
    ```
 
 ### Step 3: Install Dependencies

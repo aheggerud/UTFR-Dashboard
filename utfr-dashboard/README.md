@@ -28,8 +28,8 @@ The UTFR Race Engineering Dashboard is a modern, web-based solution designed spe
 
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
-   cd utfr-dashboard
+   git clone https://github.com/aheggerud/UTFR-Dashboard.git
+   cd UTFR-Dashboard/utfr-dashboard
    ```
 
 2. **Install dependencies**:
