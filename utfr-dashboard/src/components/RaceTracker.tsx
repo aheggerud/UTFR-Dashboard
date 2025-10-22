@@ -305,19 +305,76 @@ export default function RaceTracker() {
                       )}
                     </td>
                     <td className="py-2 px-3">
-                      <Input value={l.cones ?? ""} onChange={(e)=>updateLap(l.lapNumber, { cones: parseInt(e.target.value || "0") })} className="w-24 text-white bg-gray-800 border-gray-700" />
+                      <Input 
+                        value={l.cones !== undefined ? l.cones.toString() : ""} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") {
+                            updateLap(l.lapNumber, { cones: undefined });
+                          } else {
+                            const num = parseInt(val);
+                            if (!isNaN(num)) {
+                              updateLap(l.lapNumber, { cones: num });
+                            }
+                          }
+                        }} 
+                        placeholder="0"
+                        className="w-24 text-white bg-gray-800 border-gray-700" 
+                      />
                     </td>
                     <td className="py-2 px-3">
-                      <Input value={l.socStartPct ?? ""} onChange={(e)=>updateLap(l.lapNumber, { socStartPct: parseFloat(e.target.value || "") })} className="w-28 text-white bg-gray-800 border-gray-700" />
+                      <Input 
+                        value={l.socStartPct !== undefined ? l.socStartPct.toString() : ""} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") {
+                            updateLap(l.lapNumber, { socStartPct: undefined });
+                          } else {
+                            const num = parseFloat(val);
+                            if (!isNaN(num)) {
+                              updateLap(l.lapNumber, { socStartPct: num });
+                            }
+                          }
+                        }} 
+                        placeholder="0"
+                        className="w-28 text-white bg-gray-800 border-gray-700" 
+                      />
                     </td>
                     <td className="py-2 px-3">
-                      <Input value={l.socEndPct ?? ""} onChange={(e)=>updateLap(l.lapNumber, { socEndPct: parseFloat(e.target.value || "") })} className="w-28 text-white bg-gray-800 border-gray-700" />
+                      <Input 
+                        value={l.socEndPct !== undefined ? l.socEndPct.toString() : ""} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") {
+                            updateLap(l.lapNumber, { socEndPct: undefined });
+                          } else {
+                            const num = parseFloat(val);
+                            if (!isNaN(num)) {
+                              updateLap(l.lapNumber, { socEndPct: num });
+                            }
+                          }
+                        }} 
+                        placeholder="0"
+                        className="w-28 text-white bg-gray-800 border-gray-700" 
+                      />
                     </td>
                     <td className="py-2 px-3">
-                      <Input value={l.targetWh ?? (lapTargetWh || "")} onChange={(e)=>{
-                        const v = e.target.value; const n = v === "" ? undefined : parseFloat(v);
-                        updateLap(l.lapNumber, { targetWh: Number.isFinite(n as number) ? (n as number) : undefined });
-                      }} className="w-28 text-white bg-gray-800 border-gray-700" />
+                      <Input 
+                        value={l.targetWh !== undefined ? l.targetWh.toString() : (lapTargetWh || "")} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") {
+                            updateLap(l.lapNumber, { targetWh: undefined });
+                          } else {
+                            const num = parseFloat(val);
+                            if (!isNaN(num)) {
+                              updateLap(l.lapNumber, { targetWh: num });
+                            }
+                          }
+                        }} 
+                        placeholder={lapTargetWh || "0"}
+                        className="w-28 text-white bg-gray-800 border-gray-700" 
+                      />
                     </td>
                     <td className={`py-2 px-3 ${bg}`}>{consWh?.toFixed(0) ?? "—"}</td>
                     <td className="py-2 px-3">
@@ -363,11 +420,41 @@ export default function RaceTracker() {
                     <div className="ml-auto flex gap-3 items-center">
                       <div className="flex items-center gap-2">
                         <Label className="text-xs">Driver Swap (s)</Label>
-                        <Input value={swap ?? ""} onChange={(e)=>setSwap(parseFloat(e.target.value||""))} className="w-28 text-white bg-gray-800 border-gray-700" />
+                        <Input 
+                          value={swap !== undefined && !isNaN(swap) ? swap.toString() : ""} 
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "") {
+                              setSwap(undefined);
+                            } else {
+                              const num = parseFloat(val);
+                              if (!isNaN(num)) {
+                                setSwap(num);
+                              }
+                            }
+                          }} 
+                          placeholder="0"
+                          className="w-28 text-white bg-gray-800 border-gray-700" 
+                        />
                       </div>
                       <div className="flex items-center gap-2">
                         <Label className="text-xs">Actual kWh</Label>
-                        <Input value={actual ?? ""} onChange={(e)=>setActual(parseFloat(e.target.value||""))} className="w-28 text-white bg-gray-800 border-gray-700" />
+                        <Input 
+                          value={actual !== undefined && !isNaN(actual) ? actual.toString() : ""} 
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "") {
+                              setActual(undefined);
+                            } else {
+                              const num = parseFloat(val);
+                              if (!isNaN(num)) {
+                                setActual(num);
+                              }
+                            }
+                          }} 
+                          placeholder="0"
+                          className="w-28 text-white bg-gray-800 border-gray-700" 
+                        />
                       </div>
                       <div className="text-sm">Est: {s.totals.kwhUsedEst?.toFixed(2) ?? "—"}</div>
                     </div>
