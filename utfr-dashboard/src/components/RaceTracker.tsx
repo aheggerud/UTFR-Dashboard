@@ -48,6 +48,52 @@ export default function RaceTracker() {
   const [stints, setStints] = useState<Stint[]>([]);
   const [selectedStintId, setSelectedStintId] = useState<string>("current");
 
+  // Write a stint JSON to Google Drive if write access is granted via LocalGoogleDriveSync
+  const exportStintToDrive = async (stint: Stint) => {
+    try {
+      const writeHandle: any = (typeof window !== 'undefined') ? (window as any).utfrWriteHandle : null;
+      if (!writeHandle) return; // silently no-op if no write access
+
+      // Derive folder name: use today's date and provided track name
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const m = today.getMonth() + 1;
+      const d = today.getDate();
+      const trackName = (stint.track || 'Unknown').trim() || 'Unknown';
+      const folderName = `${yyyy}-${m}-${d} - ${trackName}`;
+
+      // Ensure day directory and Data Dump subfolder exist
+      // @ts-ignore
+      const dayDir = await writeHandle.getDirectoryHandle(folderName, { create: true });
+      // @ts-ignore
+      const dataDumpDir = await dayDir.getDirectoryHandle('Data Dump', { create: true });
+
+      // Compose a stable, readable filename
+      const safeName = stint.name.replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 40) || 'stint';
+      const shortId = stint.id.slice(-6);
+      const fileName = `stint-${safeName}-${shortId}.json`;
+
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        driver: stint.driver,
+        track: stint.track,
+        name: stint.name,
+        totals: stint.totals,
+        laps: stint.laps,
+      };
+
+      // @ts-ignore
+      const fileHandle = await dataDumpDir.getFileHandle(fileName, { create: true });
+      // @ts-ignore
+      const writable = await fileHandle.createWritable();
+      await writable.write(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+      await writable.close();
+    } catch (err) {
+      // Swallow errors to avoid interrupting UI flow; export is best-effort
+      console.warn('Failed to export stint to Drive:', err);
+    }
+  };
+
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [running, setRunning] = useState(false);
   const [lapStartTs, setLapStartTs] = useState<number | null>(null);
@@ -158,6 +204,8 @@ export default function RaceTracker() {
       totals: { numLaps: totals.numLaps, totalCones: totals.totalCones, avgLap: totals.avgLap, bestLap: totals.bestLap, kwhUsedEst: est },
     };
     setStints(prev => [...prev, stint]);
+    // Best-effort auto-export to Google Drive if write access granted
+    exportStintToDrive(stint);
     // reset for next stint
     setLaps([]); setNextLapNum(1); setStintName(`Stint ${stints.length + 2}`);
   };
@@ -403,8 +451,8 @@ export default function RaceTracker() {
               Changes are saved automatically and will update the stint totals.
             </div>
             {stints.map((s, i) => {
-              const [actual, setActual] = [s.kwhActual, (v:number)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,kwhActual:v}:x))];
-              const [swap, setSwap] = [s.driverSwapSec, (v:number)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,driverSwapSec:v}:x))];
+              const [actual, setActual] = [s.kwhActual, (v:number | undefined)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,kwhActual:v}:x))];
+              const [swap, setSwap] = [s.driverSwapSec, (v:number | undefined)=>setStints(prev=>prev.map(x=>x.id===s.id?{...x,driverSwapSec:v}:x))];
               const over = s.kwhActual !== undefined && s.totals.kwhUsedEst !== undefined ? s.kwhActual > s.totals.kwhUsedEst : false;
               const bg = s.kwhActual === undefined ? "bg-gray-900" : (over ? "bg-red-900/40" : "bg-green-900/30");
               const isSelected = selectedStintId === s.id;
@@ -457,6 +505,13 @@ export default function RaceTracker() {
                         />
                       </div>
                       <div className="text-sm">Est: {s.totals.kwhUsedEst?.toFixed(2) ?? "—"}</div>
+                      <Button 
+                        variant="outline" 
+                        className="text-xs border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white"
+                        onClick={() => exportStintToDrive(s)}
+                      >
+                        Export JSON
+                      </Button>
                     </div>
                   </div>
                 </div>
